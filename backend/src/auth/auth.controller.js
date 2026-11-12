@@ -41,4 +41,21 @@ async function login(req, res) {
   }
 }
 
-module.exports = { registro, login };
+async function obtenerPerfil(req, res) {
+  try {
+    const usuario = await authService.obtenerUsuarioActual(req.usuarioId);
+
+    return res.status(200).json({
+      mensaje: "Usuario autenticado",
+      usuario
+    });
+  } catch (error) {
+    return responderError(res, error);
+  }
+}
+
+module.exports = {
+  registro,
+  login,
+  obtenerPerfil
+};
