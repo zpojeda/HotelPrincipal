@@ -1,296 +1,256 @@
-import FormularioReserva from "./FormularioReserva"
-import Swal from "sweetalert2"
-import { useState , useEffect } from "react"
-import DataTable from "react-data-table-component"
-import { createRoot } from "react-dom/client"
-import { obtenerClientePorId, obtenerClientes } from "../utils/clientesStorage"
-import { generarCodigoReserva } from "../utils/reservasStorage"
-import { formatearPrecioHabitacion, obtenerHabitaciones } from "../utils/habitacionesStorage"
-import { obtenerPerfilAPI} from "../services/authService";
 
-const reservasIniciales = [
+import { useCallback, useEffect, useState } from "react";
+import Swal from "sweetalert2";
+import { createRoot } from "react-dom/client";
+import DataTable from "react-data-table-component";
+import FormularioReserva from "./FormularioReserva";
+
+import {
+  consultarReservas,
+  consultarHabitacionesParaReservar,
+  crearReservaAPI,
+  cancelarReservaAPI
+} from "../services/reservasService";
+
+function fechaISO(valor) {
+  if (!valor) return "";
+  return String(valor).slice(0, 10);
+}
+
+function moneda(valor) {
+  return `$${Number(valor ?? 0).toLocaleString("es-CO")}`;
+}
+
+export default function TablaReservas({ esAdmin = false }) {
+  const [reservas, setReservas] = useState([]);
+  const [busqueda, setBusqueda] = useState("");
+  const [cargando, setCargando] = useState(true);
+  const [error, setError] = useState("");
+
+  const cargar = useCallback(async () => {
+    setCargando(true);
+    setError("");
+
+    try {
+      const datos = await consultarReservas(esAdmin);
+      setReservas(datos);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setCargando(false);
+    }
+  }, [esAdmin]);
+
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
+
+  async function abrirFormulario() {
+    let habitaciones;
+
+    try {
+      habitaciones = await consultarHabitacionesParaReservar();
+    } catch (e) {
+      await Swal.fire(
+        "No se pudieron consultar habitaciones",
+        e.message,
+        "error"
+      );
+      return;
+    }
+
+    const contenedor = document.createElement("div");
+    const raiz = createRoot(contenedor);
+
+    let cerrarSolicitado = false;
+
+    const cerrar = () => {
+      if (!cerrarSolicitado) {
+        cerrarSolicitado = true;
+        Swal.close();
+      }
+    };
+
+    raiz.render(
+      <FormularioReserva
+        habitaciones={habitaciones}
+        cancelar={cerrar}
+        guardar={async (datos) => {
+          try {
+            const respuesta = await crearReservaAPI({
+              habitacion_id: Number(datos.habitacionId),
+              fecha_entrada: datos.entrada,
+              fecha_salida: datos.salida
+            });
+
+            cerrar();
+            await cargar();
+
+            await Swal.fire({
+              icon: "success",
+              title: "Reserva registrada",
+              text: `Código ${respuesta.reserva?.id ?? "generado"}`,
+              confirmButtonColor: "#344c5c"
+            });
+
+          } catch (error) {
+            await Swal.fire({
+              icon: "error",
+              title: "No se puede realizar la reserva",
+              text: error.message,
+              confirmButtonColor: "#344c5c"
+            });
+          }
+        }}
+      />
+    );
+
+    await Swal.fire({
+      title: "Nueva reserva",
+      html: contenedor,
+      showConfirmButton: false,
+      didClose: () => {
+        setTimeout(() => raiz.unmount(), 0);
+      }
+    });
+  }
+
+  async function cancelarReserva(reserva) {
+    const confirmacion = await Swal.fire({
+      title: "¿Cancelar esta reserva?",
+      text: `Reserva ${reserva.id}. No se eliminará el registro de MySQL.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Sí, cancelar reserva",
+      cancelButtonText: "Volver"
+    });
+
+    if (!confirmacion.isConfirmed) return;
+
+    try {
+      await cancelarReservaAPI(reserva.id);
+      await cargar();
+
+      await Swal.fire(
+        "Reserva cancelada",
+        "La reserva conserva su historial.",
+        "success"
+      );
+    } catch (e) {
+      await Swal.fire(
+        "No se pudo cancelar",
+        e.message,
+        "error"
+      );
+    }
+  }
+
+  const columnas = [
     {
-        id: 1,
-        habitacion: "Suite 201",
-        entrada: "2026-10-19",
-        salida: "2016-10-28",
-        estado: "Confirmada"
+      name: "Código",
+      selector: r => r.id,
+      sortable: true
     },
     {
-        id: 2,
-        habitacion: "Doble 106",
-        entrada: "2026-11-10",
-        salida: "2016-11-15",
-        estado: "Pendiente"
-    }
-]
-function TablaReservas({ clienteId, esAdmin = false }) {
-    const [reservas, setReservas] = useState(() =>{
-        const guardadas = localStorage.getItem("reservasHotel")
-        return guardadas ? JSON.parse(guardadas) : reservasIniciales
-    })
-    const [clientes] = useState(() => esAdmin ? obtenerClientes() : [])
-    const [busqueda, setBusqueda] = useState("")
+      name: "Habitación",
+      selector: r => r.habitacion,
+      sortable: true
+    },
+    ...(esAdmin
+      ? [{
+          name: "Cliente",
+          selector: r => r.cliente ?? "—"
+        }]
+      : []),
+    {
+      name: "Entrada",
+      selector: r => fechaISO(r.fecha_entrada),
+      sortable: true
+    },
+    {
+      name: "Salida",
+      selector: r => fechaISO(r.fecha_salida),
+      sortable: true
+    },
+    {
+      name: "Estado",
+      selector: r => r.estado,
+      sortable: true
+    },
+    {
+      name: "Total",
+      selector: r => Number(r.precio_reservado),
+      format: r => moneda(r.precio_reservado),
+      sortable: true
+    },
+    ...(!esAdmin
+      ? [{
+          name: "Acciones",
+          cell: r =>
+            ["Pendiente", "Confirmada"].includes(r.estado)
+              ? (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline-danger"
+                  onClick={() => cancelarReserva(r)}
+                >
+                  Cancelar
+                </button>
+              )
+              : <span className="text-muted">—</span>
+        }]
+      : [])
+  ];
 
-    const abrirFormulario = async (reserva = null) => {
-        if (!esAdmin) {
-            try {
-               const sesion = JSON.parse(
-    sessionStorage.getItem("sesionHotel") || "null"
-);
+  const filtradas = reservas.filter(r =>
+    `${r.id} ${r.habitacion} ${r.estado} ${r.cliente ?? ""}`
+      .toLowerCase()
+      .includes(busqueda.toLowerCase())
+  );
 
-if (!sesion?.token) {
-    throw new Error("Debes iniciar sesión nuevamente");
+  return (
+    <div>
+      <div className="d-flex justify-content-between mb-3 gap-2">
+        <input
+          className="form-control"
+          style={{ maxWidth: 280 }}
+          placeholder="Buscar reserva..."
+          value={busqueda}
+          onChange={e => setBusqueda(e.target.value)}
+        />
+
+        {!esAdmin && (
+          <button
+            className="btn text-white"
+            style={{ backgroundColor: "#344c5c" }}
+            onClick={abrirFormulario}
+          >
+            Reservar habitación
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <div className="alert alert-danger">
+          {error}
+          <button
+            className="btn btn-sm btn-outline-danger ms-2"
+            onClick={cargar}
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
+
+      <DataTable
+        columns={columnas}
+        data={filtradas}
+        progressPending={cargando}
+        pagination
+        responsive
+        highlightOnHover
+        noDataComponent="No hay reservas registradas"
+      />
+    </div>
+  );
 }
-
-const cliente = await obtenerPerfilAPI(sesion.token);
-              if (
-    !cliente ||
-    cliente.rol !== "cliente" ||
-    cliente.activo === false ||
-    cliente.activo === 0
-) {
-    await Swal.fire({
-        icon: "warning",
-        title: "Cuenta no disponible",
-        text: "No puedes realizar reservas con una cuenta inactiva.",
-        confirmButtonColor: "#344c5c"
-    });
-    return;
-}
-            } catch (error) {
-                await Swal.fire({
-                    icon: "error",
-                    title: "No se pudo validar la cuenta",
-                    text: error.message || "Intenta nuevamente más tarde.",
-                    confirmButtonColor: "#344c5c"
-                })
-                return
-            }
-        }
-
-        let habitaciones;
-        try {
-            habitaciones = obtenerHabitaciones();
-        } catch (error) {
-            await Swal.fire({
-                icon: "error",
-                title: "No se pudieron cargar las habitaciones",
-                text: error.message,
-                confirmButtonColor: "#344c5c"
-            });
-            return;
-        }
-
-        const contenedor = document.createElement("div")
-        const raiz = createRoot(contenedor)
-
-        raiz.render(
-            <FormularioReserva
-            reserva={reserva}
-            clienteId={clienteId}
-            esAdmin={esAdmin}
-            clientes={clientes}
-            habitaciones={habitaciones}
-            reservas={reservas}
-            guardar={ async (datos) => {
-                if (!esAdmin) {
-                    try {
-                        const sesion = JSON.parse(
-                            sessionStorage.getItem("sesionHotel") || "null"
-                        );
-
-                        if( !sesion?.token) {   
-
-                            throw new Error("Debes iniciar sesión nuevamnete ")
-                        }
-
-                        const cliente = await obtenerPerfilAPI(sesion.token);
-                        if (cliente.rol !== "cliente" || cliente.activo === false || cliente.activo === 0) {
-                           await Swal.fire(                                
-                                 "Cuenta no disponible",
-                                 "No puedes realizar reservas con una cuenta inactiva. Contacta al hotel para recibir ayuda.",
-                                "warning"
-                            ); 
-                            return
-                        }
-                    } catch (error) {
-                       await Swal.fire(
-                            "Error",
-                            error.message || "Intenta nuevamente más tarde.",
-                            "error"
-                       );
-                        return;
-                    }
-                }
-
-                if (reserva){ 
-                    setReservas(actuales =>
-                        actuales.map(r =>
-                            r.id === reserva.id
-                                ? { ...r, ...datos, clienteId: esAdmin ? datos.clienteId : r.clienteId }
-                                : r
-                        )
-                    )
-
-                }else {
-                const nuevaReserva = {
-                    id: generarCodigoReserva(reservas),
-                   ...datos,
-                }
-                setReservas(actuales => [...actuales, nuevaReserva])
-            }
-                Swal.close()
-            }}
-            cancelar={() => Swal.close()}
-            />
-        )
-        await Swal.fire({
-            title: reserva ? "Editar Reserva" : "Nueva Reserva",
-            html:contenedor,
-            showConfirmButton: false,
-            didClose: () => raiz.unmount()
-        })
-    }
-    useEffect(() => {
-        localStorage.setItem("reservasHotel", JSON.stringify(reservas))
-    }, [reservas])
-
-    const eliminarReserva = async (id) => {
-        const resultado = await Swal.fire({
-            title:" Eliminar reserva ?",
-            text:"Esta accion eliminara la reserva", 
-            icon:"warning",
-            showCancelButton: true, 
-            confirmButtonText: "Si, eliminar", 
-            confirmButtonColor: "#dc3545"
-        })
-
-        if (resultado.isConfirmed){
-            setReservas(actuales => 
-                actuales.filter(reserva => reserva.id !== id )
-
-            )
-            Swal.fire("Reserva eliminada", )
-        }
-    }    
-
-    const columnas = [
-        {
-            name: "Codigo",
-            selector: fila => fila.id,
-            sortable: true
-        },
-        {
-            name: "Habitación",
-            selector: fila => fila.habitacion,
-            sortable: true
-        },
-        {
-            name: "Tipo",
-            selector: fila => fila.habitacionTipo || "—",
-            sortable: true
-        },
-        {
-            name: "Precio",
-            selector: fila => fila.habitacionPrecio ?? "",
-            format: fila => fila.habitacionPrecio == null
-                ? "—"
-                : formatearPrecioHabitacion(fila.habitacionPrecio),
-            sortable: true
-        },
-        ...(esAdmin ? [{
-            name: "Cliente",
-            selector: fila => {
-                const cliente = clientes.find(item => item.id === fila.clienteId);
-                return cliente
-                    ? cliente.perfil?.nombre || cliente.correo
-                    : "Sin asignar";
-            },
-            sortable: true
-        }] : []),
-        {
-            name: "Entrada",
-            selector: fila => fila.entrada,
-            sortable: true
-        },
-        {
-            name: "Salida",
-            selector: fila => fila.salida,
-            sortable: true
-        },
-        {
-            name: "Estado",
-            selector: fila => fila.estado,
-            sortable: true
-        },
-        {
-            name: "Acciones",
-            cell: fila => (
-                <div className="d-flex gap-2">
-                    <button
-                        className="btn btn-sm btn-outline-primary"
-                        title="Editar"
-                        onClick={() => abrirFormulario(fila)}
-                    >
-                        <i className="bi bi-pencil-square"></i>
-                    </button>
-                    <button
-                        className="btn btn-sm btn-outline-danger"
-                        title="Eliminar"
-                        onClick={() => eliminarReserva(fila.id)}
-                    >
-                        <i className="bi bi-trash"></i>
-                    </button>
-                </div>
-            )
-        }
-
-    ]
-
-
-
-    const reservasPropias = esAdmin
-        ? reservas
-        : reservas.filter(reserva => reserva.clienteId === clienteId);
-    const reservasFiltradas = reservasPropias.filter(reserva =>
-        reserva.habitacion.toLowerCase().includes(busqueda.toLowerCase()) ||
-        reserva.estado.toLowerCase().includes(busqueda.toLowerCase())
-    )
-
-    return(
-        <div>
-            <div className="d-flex justify-content-between mb-3 gap-2 ">
-                <input
-                type="text"
-                className="form-control"
-                style={{ maxWidth:"280px" }}
-                placeholder="Buscar reserva..."
-                value={busqueda}
-                onChange={e =>setBusqueda(e.target.value)}
-                />
-             <button
-             className="btn text-white"
-             style={{ backgroundColor:"#344c5c" }}
-             onClick={() => abrirFormulario()}
-             
-             >   
-             <i className="bi bi-plus-circle me-2"></i>
-             {esAdmin ? "Nueva Reserva" : "Reservar habitación"}
-            </button>
-              </div>
-            <DataTable 
-            columns={columnas}
-            data={reservasFiltradas}
-            pagination
-            highlightOnHover
-            responsive
-            noDataComponent={esAdmin
-                ? "No se encontraron reservas"
-                : "Aún no tienes reservas. Crea una para verla aquí."}
-            />
-          </div> 
-    )
-}
-
-export default TablaReservas
