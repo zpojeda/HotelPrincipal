@@ -1,0 +1,10 @@
+const router=require('express').Router();
+const verificarToken=require('../middlewares/verificarToken');
+const autorizarRoles=require('../middlewares/autorizarRoles');
+const c=require('./empleados.controller');
+router.use(verificarToken,autorizarRoles('admin'));
+router.get('/',c.listar);
+router.post('/',c.crear);
+router.put('/:id',c.actualizar);
+router.patch('/:id/estado',c.estado);
+module.exports=router;

@@ -248,21 +248,7 @@ function FormularioReserva({
                 required
                  />
 
-                <div className="mb-3">
-                    <label htmlFor="" className="form-label">Estado</label>
-                    <select 
-                    className="form-select"
-                    name="estado"
-                    value={datos.estado}
-                    onChange={manejarCambio}
-                    required >
-
-                <option value="Pendiente">Pendiente</option>
-                <option value="Confirmada">Confirmada</option>
-                <option value="Cancelada">Cancelada</option>
-                    </select>
-                    
-                    </div> 
+                 
               </div>  
                 <div className="d-flex justify-content-end gap-2">
                     <button
