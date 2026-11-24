@@ -9,6 +9,7 @@ import TablaHuespedes from '../../components/TablaHuespedes'
 import TablaEmpleados from '../../components/TablaEmpleados'
 import TablaTareas from '../../components/TablaTareas'
 import { obtenerClientes } from '../../utils/clientesStorage'
+import Reportes from '../../components/Reportes';
 
 const reservas = [
   { id: 'R-001', huesped: 'Laura Gómez', habitacion: 'Suite 201', fecha: '18/10/2026', estado: 'Confirmada' },
@@ -16,7 +17,15 @@ const reservas = [
   { id: 'R-003', huesped: 'Ana Torres', habitacion: 'Suite 203', fecha: '20/10/2026', estado: 'Confirmada' },
 ]
 
-const secciones = ['Resumen', 'Habitaciones', 'Reservas', 'Huéspedes', 'Empleados', 'Tareas']
+const secciones = [
+  'Resumen',
+  'Habitaciones',
+  'Reservas',
+  'Huéspedes',
+  'Empleados',
+  'Tareas',
+  'Reportes'
+];
 
 const estilosTablaReservas = {
   headRow: {
@@ -63,13 +72,13 @@ const estilosTablaReservas = {
 function Dashboard({ onLogout }) {
   const [seccion, setSeccion] = useState('Resumen')
 
-  const [reservasClientes] = useState(() =>{
+  const [reservasClientes] = useState(() => {
     const guardadas = localStorage.getItem("reservasHotel")
     return guardadas ? JSON.parse(guardadas) : []
   })
   const [clientes, setClientes] = useState(() => obtenerClientes())
 
-    const confirmadas = reservasClientes.filter(
+  const confirmadas = reservasClientes.filter(
     reserva => reserva.estado === "Confirmada"
   ).length
 
@@ -125,25 +134,25 @@ function Dashboard({ onLogout }) {
     }
   ]
 
-  const confirmarSalida =() =>{
-   
+  const confirmarSalida = () => {
+
     Swal.fire({
-      title:"¿Deseas cerrar Sesión?",
+      title: "¿Deseas cerrar Sesión?",
       text: "Regresaras a la pagina principal",
-      icon: "question", 
-      showCancelButton:true, 
-      confirmButtonText:"Si, salir",
-      cancelButtonText:"Cancelar", 
-      confirmButtonColor:"#344c5c"
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Si, salir",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor: "#344c5c"
     }).then((resultado) => {
       if (resultado.isConfirmed) {
-      onLogout()
-    }
-  })
-}
+        onLogout()
+      }
+    })
+  }
   return (
     <div className="hp-dashboard">
-      
+
       <Sidebar
         titulo='Administración'
         opciones={secciones}
@@ -178,8 +187,8 @@ function Dashboard({ onLogout }) {
               {[
                 { titulo: 'Habitaciones', valor: '24', detalle: 'Total registradas', icono: '▤' },
                 { titulo: 'Reservas', valor: reservasClientes.length, detalle: 'Reservas activas', icono: '▣' },
-                { titulo: 'Confirmadas', valor: confirmadas, detalle :'Reservas confirmadas', icono: '✔️' },
-                { titulo: 'Pendientes', valor: pendientes, detalle :'Reservas pendientes', icono: '⏳' },
+                { titulo: 'Confirmadas', valor: confirmadas, detalle: 'Reservas confirmadas', icono: '✔️' },
+                { titulo: 'Pendientes', valor: pendientes, detalle: 'Reservas pendientes', icono: '⏳' },
                 { titulo: 'Huéspedes', valor: clientes.length, detalle: 'Huéspedes registrados', icono: '♙' },
                 { titulo: 'Ocupación', valor: '75%', detalle: 'Ocupación estimada', icono: '◕' },
               ].map((dato) => (
@@ -214,7 +223,7 @@ function Dashboard({ onLogout }) {
               />
             </section>
           </>
-        ): seccion === "Habitaciones" ? (
+        ) : seccion === "Habitaciones" ? (
           <TablaHabitaciones />
 
         ) : seccion === "Reservas" ? (
@@ -233,7 +242,10 @@ function Dashboard({ onLogout }) {
         ) : seccion === "Tareas" ? (
           <TablaTareas />
 
-        ): (
+        ) : seccion === "Reportes" ? (
+          <Reportes />
+
+        ) : (
           <section className="hp-panel hp-placeholder">
             <span className="hp-placeholder-icon">✦</span>
             <h2>Gestión de {seccion.toLowerCase()}</h2>

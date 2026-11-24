@@ -14,7 +14,13 @@ const clientesRoutes = require('./clientes/clientes.routes');
 const empleadosRoutes = require('./empleados/empleados.routes');
 const tareasRoutes = require('./tareas/tareas.routes');
 
+const reportesRoutes = require('./reportes/reportes.routes');
+
+const recuperacionRoutes = require('./auth/recuperacion.routes');
+
 const app = express(); 
+
+
 
 app.use(helmet());
 
@@ -30,6 +36,8 @@ app.use("/api/reservas", reservasRoutes);
 app.use('/api/clientes', clientesRoutes);
 app.use('/api/empleados', empleadosRoutes);
 app.use('/api/tareas', tareasRoutes);
+app.use('/api/reportes', reportesRoutes);
+app.use('/api/recuperacion', recuperacionRoutes);
 
 
 app.get("/api", (req, res) =>{
